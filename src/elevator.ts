@@ -119,7 +119,7 @@ export class Elevator {
           <div class="state-column">
             <h2>Event Queue</h2>
             <div class="queue-panel">
-              <div class="queue-status">Queue: ${this.formatQueueStatus()}</div>
+              <div class="queue-status">${this.formatQueueStatus()}</div>
             </div>
           </div>
         </div>
@@ -163,12 +163,16 @@ export class Elevator {
     }
   
     private async requestFloor(floor: number): Promise<void> {
-      if (floor === this.state.currentFloor || 
-          this.state.queue.some(event => event.type === MOVE_TO_FLOOR && event.floor === floor) ||
-          this.state.isMoving) return;
+      // Check if elevator is moving or if this floor is already the current floor
+      if (floor === this.state.currentFloor || this.state.isMoving) return;
+
+      // Check if there are any MOVE_TO_FLOOR actions in the queue
+      const hasFloorDestinations = this.state.queue.some(event => event.type === MOVE_TO_FLOOR);
+      if (hasFloorDestinations) return;
 
       const newEvents: ElevatorAction[] = [];
 
+      // Close doors if they're open or in transition
       if (this.doors.getStatus() === 'open' || this.doors.getStatus() === 'pending') {
         newEvents.push(closeDoor('button'));
       }
@@ -319,7 +323,7 @@ export class Elevator {
       // Update queue and events status
       const queueStatus = document.querySelector('.queue-status');
       if (queueStatus) {
-        queueStatus.textContent = `Queue: ${this.formatQueueStatus()}`;
+        queueStatus.innerHTML = this.formatQueueStatus();
       }
   
       const movingStatus = document.querySelector('.moving-status');
@@ -329,16 +333,20 @@ export class Elevator {
     }
   
     private formatQueueStatus(): string {
-      return this.state.queue.map(event => {
-        if (event.type === OPEN_DOOR) {
-          return `Door open`;
-        } else if (event.type === CLOSE_DOOR) {
-          return `Door close`;
-        } else if (event.type === WAIT_ON_FLOOR) {
-          return `Wait ${event.duration/1000}s`;
-        } else {
-          return `Floor ${event.floor}`;
-        }
-      }).join(', ') || 'Empty';
+      return `
+        <ul class="queue-list">
+          ${this.state.queue.map(event => {
+            if (event.type === OPEN_DOOR) {
+                return `<li>Door open</li>`;
+            } else if (event.type === CLOSE_DOOR) {
+                return `<li>Door close</li>`;
+            } else if (event.type === WAIT_ON_FLOOR) {
+                return `<li>Wait ${event.duration/1000}s</li>`;
+            } else {
+                return `<li>Floor ${event.floor}</li>`;
+            }
+        }).join('') || '<li>Empty</li>'}
+      </ul>
+    `;
     }
   }
