@@ -2,7 +2,7 @@ import { ElevatorStatus } from "./store/elevator/states";
 
 export class ElevatorDoors {
   private doorStatus: ElevatorStatus;
-  private readonly doorDelay: number = 1500;
+  private readonly doorDelay: number = 3000;
   private isProcessing: boolean = false;
 
   constructor() {
@@ -11,13 +11,16 @@ export class ElevatorDoors {
 
   getStatus(): string {
     switch (this.doorStatus) {
-      case ElevatorStatus.DoorOpen:
-        return 'open';
-      case ElevatorStatus.DoorOpening:
-      case ElevatorStatus.DoorClosing:
-        return 'pending';
-      default:
-        return 'closed';
+        case ElevatorStatus.DoorOpen:
+            return 'open';
+        case ElevatorStatus.DoorOpening:
+        case ElevatorStatus.DoorClosing:
+            return 'pending';
+        case ElevatorStatus.Idle:
+        case ElevatorStatus.Moving:
+        case ElevatorStatus.MovingDown:
+        default:
+            return 'closed';
     }
   }
 
@@ -28,7 +31,9 @@ export class ElevatorDoors {
     
     this.isProcessing = true;
     this.doorStatus = ElevatorStatus.DoorOpening;
-    await new Promise(resolve => setTimeout(resolve, this.doorDelay));
+  }
+
+  async confirmOpen(): Promise<void> {
     this.doorStatus = ElevatorStatus.DoorOpen;
     this.isProcessing = false;
   }
@@ -40,7 +45,9 @@ export class ElevatorDoors {
     
     this.isProcessing = true;
     this.doorStatus = ElevatorStatus.DoorClosing;
-    await new Promise(resolve => setTimeout(resolve, this.doorDelay));
+  }
+
+  async confirmClose(): Promise<void> {
     this.doorStatus = ElevatorStatus.Idle;
     this.isProcessing = false;
   }

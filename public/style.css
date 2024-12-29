@@ -325,3 +325,16 @@ h3 {
     background: var(--bg-secondary);
     border-radius: 4px;
 }
+
+.debug-button {
+    margin-top: 1rem;
+    padding: 0.5rem 1rem;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.debug-button:hover {
+    background-color: #e0e0e0;
+}

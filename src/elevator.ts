@@ -50,6 +50,7 @@ interface ElevatorState {
     currentFloor: number;
     queue: ElevatorAction[];
     machineState: ElevatorStatus;
+    queueProcessing: boolean;
 }
 
 export class Elevator {
@@ -77,7 +78,8 @@ export class Elevator {
       this.state = { 
         currentFloor: 1, 
         queue: [], 
-        machineState: ElevatorStatus.Idle 
+        machineState: ElevatorStatus.Idle,
+        queueProcessing: false
       };
       
       this.initialize();
@@ -89,7 +91,7 @@ export class Elevator {
     }
 
     private log() {
-      console.dir(this.state, { depth: null });
+      console.log(this.state);
     }
   
     private initialize(): void {
@@ -135,6 +137,7 @@ export class Elevator {
             <div class="queue-panel">
               <div class="queue-status">${this.formatQueueStatus()}</div>
             </div>
+            <button class="debug-button">Log State</button>
           </div>
         </div>
       `;
@@ -174,6 +177,14 @@ export class Elevator {
           }
         });
       });
+
+      // Add debug button listener
+      const debugButton = document.querySelector('.debug-button');
+      if (debugButton) {
+        debugButton.addEventListener('click', () => {
+          this.log();
+        });
+      }
     }
   
     private async requestFloor(floor: number): Promise<void> {
@@ -190,43 +201,65 @@ export class Elevator {
       this.state.queue.push(...newEvents);
       this.updateUI();
 
+      // If the queue length is the same as the new events, process the queue
       if (this.state.queue.length === newEvents.length) {
         await this.processQueue();
       }
     }
   
     private async processQueue(): Promise<void> {
-      if (this.state.queue.length === 0) return;
+      if (this.state.queue.length === 0 || this.state.queueProcessing) return;
       
+      this.state.queueProcessing = true;
       const event = this.state.queue[0];
 
-      switch (event.type) {
-        case MOVE_TO_FLOOR:
-          if (this.state.machineState === ElevatorStatus.Idle) {
-            await this.moveToFloor(event.floor);
-            this.state.queue.shift();
-            await this.processQueue();
-          }
-          break;
+      try {
+          switch (event.type) {
+              case MOVE_TO_FLOOR:
+                  if (this.state.machineState === ElevatorStatus.Idle) {
+                      await this.moveToFloor(event.floor);
+                      this.state.queue.shift();
+                      this.state.queueProcessing = false;
+                      await this.processQueue();
+                  }
+                  break;
 
-        case OPEN_DOOR:
-          if (this.state.machineState !== ElevatorStatus.DoorOpen && 
-              this.state.machineState !== ElevatorStatus.DoorOpening) {
-            await this.machine.performTransition('openDoor');
-            await this.doors.open();
-            this.state.queue.shift();
-            await this.processQueue();
-          }
-          break;
+              case OPEN_DOOR:
+                  if (this.state.machineState !== ElevatorStatus.DoorOpen && 
+                      this.state.machineState !== ElevatorStatus.DoorOpening) {
+                      await this.machine.performTransition('openDoor');
+                      
+                      await this.doors.open();
+                      await this.updateUI();
+                      await new Promise(resolve => setTimeout(resolve, 300));
+                      await this.doors.confirmOpen();
+                      await this.updateUI();
 
-        case CLOSE_DOOR:
-          if (this.state.machineState === ElevatorStatus.DoorOpen) {
-            await this.machine.performTransition('closeDoor');
-            await this.doors.close();
-            this.state.queue.shift();
-            await this.processQueue();
+                      this.state.queue.shift();
+                      this.state.queueProcessing = false;
+                      await this.processQueue();
+                  }
+                  break;
+
+              case CLOSE_DOOR:
+                  if (this.state.machineState === ElevatorStatus.DoorOpen) {
+                      await this.machine.performTransition('closeDoor');
+                      
+                      await this.doors.close();
+                      await this.updateUI();
+                      await new Promise(resolve => setTimeout(resolve, 300));
+                      await this.doors.confirmClose();
+                      await this.updateUI();
+
+                      this.state.queue.shift();
+                      this.state.queueProcessing = false;
+                      await this.processQueue();
+                  }
+                  break;
           }
-          break;
+      } catch (error) {
+          console.error('Error processing queue:', error);
+          this.state.queueProcessing = false;
       }
 
       this.updateUI();
