@@ -1,20 +1,64 @@
 import { ElevatorDoors } from './elevator-doors';
 
-// Types and interfaces
-type QueueEventType = 'door' | 'floor';
+// Define action types
+const OPEN_DOOR = 'OPEN_DOOR';
+const CLOSE_DOOR = 'CLOSE_DOOR';
+const MOVE_TO_FLOOR = 'MOVE_TO_FLOOR';
+const WAIT_ON_FLOOR = 'WAIT_ON_FLOOR';
 
-interface QueueEvent {
-  type: QueueEventType;
-  action?: 'open' | 'close';  // For door events
-  floor?: number;             // For floor events
+// Define action interfaces
+interface OpenDoorAction {
+  type: typeof OPEN_DOOR;
   source: 'button' | 'arrival';
 }
 
+interface CloseDoorAction {
+  type: typeof CLOSE_DOOR;
+  source: 'button' | 'arrival';
+}
+
+interface MoveToFloorAction {
+  type: typeof MOVE_TO_FLOOR;
+  floor: number;
+  source: 'button';
+}
+
+interface WaitOnFloorAction {
+  type: typeof WAIT_ON_FLOOR;
+  duration: number;  // Duration in milliseconds
+}
+
+// Union type for all actions
+type ElevatorAction = OpenDoorAction | CloseDoorAction | MoveToFloorAction | WaitOnFloorAction;
+
+// Action creators
+const openDoor = (source: 'button' | 'arrival'): OpenDoorAction => ({
+  type: OPEN_DOOR,
+  source,
+});
+
+const closeDoor = (source: 'button' | 'arrival'): CloseDoorAction => ({
+  type: CLOSE_DOOR,
+  source,
+});
+
+const moveToFloor = (floor: number, source: 'button'): MoveToFloorAction => ({
+  type: MOVE_TO_FLOOR,
+  floor,
+  source,
+});
+
+const waitOnFloor = (duration: number = 5000): WaitOnFloorAction => ({
+  type: WAIT_ON_FLOOR,
+  duration,
+});
+
+// Types and interfaces
 interface ElevatorState {
     currentFloor: number;
     direction: 'up' | 'down' | 'idle';
     isMoving: boolean;
-    queue: QueueEvent[];      // Replace both queues with single queue
+    queue: ElevatorAction[];
 }
 
 export class Elevator {
@@ -105,11 +149,13 @@ export class Elevator {
         button.addEventListener('click', (e) => {
           const action = (e.target as HTMLElement).dataset.action as 'open' | 'close';
           if (action === 'open' && !this.state.isMoving) {
-            this.state.queue.push({ type: 'door', action: 'open', source: 'button' });
+            this.state.queue.push(openDoor('button'));
+            this.updateUI();
             this.processQueue();
           }
           if (action === 'close') {
-            this.state.queue.push({ type: 'door', action: 'close', source: 'button' });
+            this.state.queue.push(closeDoor('button'));
+            this.updateUI();
             this.processQueue();
           }
         });
@@ -118,16 +164,25 @@ export class Elevator {
   
     private async requestFloor(floor: number): Promise<void> {
       if (floor === this.state.currentFloor || 
-          this.state.queue.some(event => event.type === 'floor' && event.floor === floor) ||
-          this.doors.getStatus() === 'open' ||
-          this.doors.getStatus() === 'pending') return;
-  
-      this.state.queue.push({
-        type: 'floor',
-        floor: floor,
-        source: 'button'
-      });
+          this.state.queue.some(event => event.type === MOVE_TO_FLOOR && event.floor === floor) ||
+          this.state.isMoving) return;
+
+      const newEvents: ElevatorAction[] = [];
+
+      if (this.doors.getStatus() === 'open' || this.doors.getStatus() === 'pending') {
+        newEvents.push(closeDoor('button'));
+      }
+
+      newEvents.push(
+        moveToFloor(floor, 'button'),
+        openDoor('arrival'),
+        waitOnFloor(5000),  // Explicit 5-second wait
+        closeDoor('arrival')
+      );
+
+      this.state.queue.push(...newEvents);
       
+      this.updateUI();
       if (!this.state.isMoving) this.processQueue();
     }
   
@@ -137,34 +192,34 @@ export class Elevator {
       while (this.state.queue.length > 0) {
         const event = this.state.queue[0];
   
-        if (event.type === 'door') {
+        if (event.type === OPEN_DOOR) {
           if (!this.state.isMoving) {
-            if (event.action === 'open') {
-              await this.doors.open();
-            } else if (event.action === 'close') {
-              await this.doors.close();
-            }
+            await this.doors.open();
           }
-        } else if (event.type === 'floor' && event.floor) {
+          this.state.queue.shift();
+          this.updateUI();
+        } else if (event.type === CLOSE_DOOR) {
+          if (!this.state.isMoving) {
+            await this.doors.close();
+          }
+          this.state.queue.shift();
+          this.updateUI();
+        } else if (event.type === WAIT_ON_FLOOR) {
+          await new Promise(resolve => setTimeout(resolve, event.duration));
+          this.state.queue.shift();
+          this.updateUI();
+        } else if (event.type === MOVE_TO_FLOOR) {
           this.state.direction = event.floor > this.state.currentFloor ? 'up' : 'down';
           this.state.isMoving = true;
-          
-          await this.doors.close();
           
           this.updateUI();
           await this.moveToFloor(event.floor);
           
           this.state.isMoving = false;
+          this.state.queue.shift();
           
-          // Add door events after arrival
-          this.state.queue.push(
-            { type: 'door', action: 'open', source: 'arrival' },
-            { type: 'door', action: 'close', source: 'arrival' }
-          );
+          this.updateUI();
         }
-  
-        this.state.queue.shift();
-        this.updateUI();
       }
   
       this.state.direction = 'idle';
@@ -275,8 +330,12 @@ export class Elevator {
   
     private formatQueueStatus(): string {
       return this.state.queue.map(event => {
-        if (event.type === 'door') {
-          return `Door ${event.action}`;
+        if (event.type === OPEN_DOOR) {
+          return `Door open`;
+        } else if (event.type === CLOSE_DOOR) {
+          return `Door close`;
+        } else if (event.type === WAIT_ON_FLOOR) {
+          return `Wait ${event.duration/1000}s`;
         } else {
           return `Floor ${event.floor}`;
         }
