@@ -181,21 +181,16 @@ export class Elevator {
 
       const newEvents: ElevatorAction[] = [];
 
-      if (this.state.machineState === ElevatorStatus.DoorOpen || 
-          this.state.machineState === ElevatorStatus.DoorOpening) {
-          newEvents.push(closeDoor('button'));
-      }
-
       newEvents.push(
-          moveToFloor(floor, 'button'),
-          openDoor('arrival'),
-          closeDoor('arrival')
+        moveToFloor(floor, 'button'),
+        openDoor('arrival'),
+        closeDoor('arrival')
       );
 
       this.state.queue.push(...newEvents);
       this.updateUI();
-      
-      if (this.state.machineState === ElevatorStatus.Idle) {
+
+      if (this.state.queue.length === newEvents.length) {
         await this.processQueue();
       }
     }
@@ -208,7 +203,6 @@ export class Elevator {
       switch (event.type) {
         case MOVE_TO_FLOOR:
           if (this.state.machineState === ElevatorStatus.Idle) {
-            await this.machine.performTransition('moveToFloor');
             await this.moveToFloor(event.floor);
             this.state.queue.shift();
             await this.processQueue();
@@ -345,10 +339,6 @@ export class Elevator {
     }
 
     private canAddFloorRequest(floor: number): boolean {
-      if (floor === this.state.currentFloor) return false;
-      if (this.state.machineState === ElevatorStatus.Moving || 
-          this.state.machineState === ElevatorStatus.MovingDown) return false;
-      
-      return true;
+      return !(floor === this.state.currentFloor);
     }
   }
