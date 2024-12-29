@@ -1,33 +1,47 @@
+import { ElevatorStatus } from "./store/elevator/states";
+
 export class ElevatorDoors {
-  private doorStatus: 'open' | 'closed' | 'pending';
-  private readonly doorDelay: number = 1500; // Time for doors to open/close
+  private doorStatus: ElevatorStatus;
+  private readonly doorDelay: number = 1500;
   private isProcessing: boolean = false;
 
   constructor() {
-    this.doorStatus = 'closed';
+    this.doorStatus = ElevatorStatus.Idle;
   }
 
-  getStatus(): 'open' | 'closed' | 'pending' {
-    return this.doorStatus;
+  getStatus(): string {
+    switch (this.doorStatus) {
+      case ElevatorStatus.DoorOpen:
+        return 'open';
+      case ElevatorStatus.DoorOpening:
+      case ElevatorStatus.DoorClosing:
+        return 'pending';
+      default:
+        return 'closed';
+    }
   }
 
   async open(): Promise<void> {
-    if (this.doorStatus === 'open' || this.doorStatus === 'pending' || this.isProcessing) return;
+    if (this.doorStatus === ElevatorStatus.DoorOpen || 
+        this.doorStatus === ElevatorStatus.DoorOpening || 
+        this.isProcessing) return;
     
     this.isProcessing = true;
-    this.doorStatus = 'pending';
+    this.doorStatus = ElevatorStatus.DoorOpening;
     await new Promise(resolve => setTimeout(resolve, this.doorDelay));
-    this.doorStatus = 'open';
+    this.doorStatus = ElevatorStatus.DoorOpen;
     this.isProcessing = false;
   }
 
   async close(): Promise<void> {
-    if (this.doorStatus === 'closed' || this.doorStatus === 'pending' || this.isProcessing) return;
+    if (this.doorStatus === ElevatorStatus.Idle || 
+        this.doorStatus === ElevatorStatus.DoorClosing || 
+        this.isProcessing) return;
     
     this.isProcessing = true;
-    this.doorStatus = 'pending';
+    this.doorStatus = ElevatorStatus.DoorClosing;
     await new Promise(resolve => setTimeout(resolve, this.doorDelay));
-    this.doorStatus = 'closed';
+    this.doorStatus = ElevatorStatus.Idle;
     this.isProcessing = false;
   }
 } 

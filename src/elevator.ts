@@ -1,4 +1,5 @@
 import { ElevatorDoors } from './elevator-doors';
+import { ElevatorStatus } from './store/elevator/states';
 
 // Define action types
 const OPEN_DOOR = 'OPEN_DOOR';
@@ -56,26 +57,19 @@ const waitOnFloor = (duration: number = 5000): WaitOnFloorAction => ({
 // Types and interfaces
 interface ElevatorState {
     currentFloor: number;
-    direction: 'up' | 'down' | 'idle';
-    isMoving: boolean;
     queue: ElevatorAction[];
+    status: ElevatorStatus;
 }
 
 export class Elevator {
     private state: ElevatorState;
     private doors: ElevatorDoors;
     private readonly totalFloors: number;
-    private readonly moveDelay: number = 2000; // Time to move between floors
     
-    constructor(totalFloors: number = 10) {
-      this.totalFloors = totalFloors;
+    constructor({ floors }: { floors: number }) {
+      this.totalFloors = floors;
       this.doors = new ElevatorDoors();
-      this.state = {
-        currentFloor: 1,
-        direction: 'idle',
-        isMoving: false,
-        queue: []                 // Initialize unified queue
-      };
+      this.state = { currentFloor: 1, queue: [], status: ElevatorStatus.Idle };
       
       this.initialize();
     }
@@ -112,10 +106,8 @@ export class Elevator {
               ${this.createFloorButtons()}
             </div>
             <div class="status">
-              <div class="direction-indicator">Direction: ${this.state.direction}</div>
               <div class="door-status">Doors: ${this.doors.getStatus()}</div>
-              <div class="movement-status">Status: ${this.state.isMoving ? 'Moving' : 'Stationary'}</div>
-              <div class="moving-status">Moving: ${this.state.isMoving}</div>
+              <div class="movement-status">Status: ${this.state.status}</div>
             </div>
           </div>
 
@@ -152,7 +144,7 @@ export class Elevator {
       document.querySelectorAll('.door-control').forEach(button => {
         button.addEventListener('click', (e) => {
           const action = (e.target as HTMLElement).dataset.action as 'open' | 'close';
-          if (action === 'open' && !this.state.isMoving) {
+          if (action === 'open' && this.state.status !== ElevatorStatus.DoorOpen) {
             this.state.queue.push(openDoor('button'));
             this.updateUI();
             this.processQueue();
@@ -167,48 +159,55 @@ export class Elevator {
     }
   
     private async requestFloor(floor: number): Promise<void> {
-      // Check if elevator is moving or if this floor is already the current floor
-      if (floor === this.state.currentFloor || this.state.isMoving) return;
+      if (floor === this.state.currentFloor || 
+          this.state.status === ElevatorStatus.Moving || 
+          this.state.status === ElevatorStatus.MovingDown) return;
 
-      // Check if there are any MOVE_TO_FLOOR actions in the queue
       const hasFloorDestinations = this.state.queue.some(event => event.type === MOVE_TO_FLOOR);
       if (hasFloorDestinations) return;
 
       const newEvents: ElevatorAction[] = [];
 
-      // Close doors if they're open or in transition
-      if (this.doors.getStatus() === 'open' || this.doors.getStatus() === 'pending') {
-        newEvents.push(closeDoor('button'));
+      if (this.state.status === ElevatorStatus.DoorOpen || 
+          this.state.status === ElevatorStatus.DoorOpening) {
+          newEvents.push(closeDoor('button'));
       }
 
       newEvents.push(
-        moveToFloor(floor, 'button'),
-        openDoor('arrival'),
-        waitOnFloor(5000),  // Explicit 5-second wait
-        closeDoor('arrival')
+          moveToFloor(floor, 'button'),
+          openDoor('arrival'),
+          waitOnFloor(5000),
+          closeDoor('arrival')
       );
 
       this.state.queue.push(...newEvents);
+      this.state.status = floor > this.state.currentFloor ? 
+          ElevatorStatus.Moving : 
+          ElevatorStatus.MovingDown;
       
       this.updateUI();
-      if (!this.state.isMoving) this.processQueue();
+      if (this.state.status !== ElevatorStatus.Moving) this.processQueue();
     }
   
     private async processQueue(): Promise<void> {
-      if (this.state.isMoving) return;
+      if (this.state.status !== ElevatorStatus.Moving) return;
   
       while (this.state.queue.length > 0) {
         const event = this.state.queue[0];
   
         if (event.type === OPEN_DOOR) {
-          if (!this.state.isMoving) {
-            await this.doors.open();
+          if (this.state.status === ElevatorStatus.Idle) {
+              this.state.status = ElevatorStatus.DoorOpening;
+              await this.doors.open();
+              this.state.status = ElevatorStatus.DoorOpen;
           }
           this.state.queue.shift();
           this.updateUI();
         } else if (event.type === CLOSE_DOOR) {
-          if (!this.state.isMoving) {
-            await this.doors.close();
+          if (this.state.status === ElevatorStatus.DoorOpen) {
+              this.state.status = ElevatorStatus.DoorClosing;
+              await this.doors.close();
+              this.state.status = ElevatorStatus.Idle;
           }
           this.state.queue.shift();
           this.updateUI();
@@ -217,20 +216,19 @@ export class Elevator {
           this.state.queue.shift();
           this.updateUI();
         } else if (event.type === MOVE_TO_FLOOR) {
-          this.state.direction = event.floor > this.state.currentFloor ? 'up' : 'down';
-          this.state.isMoving = true;
+          this.state.status = ElevatorStatus.Moving;
           
           this.updateUI();
           await this.moveToFloor(event.floor);
           
-          this.state.isMoving = false;
+          this.state.status = ElevatorStatus.Idle;
           this.state.queue.shift();
           
           this.updateUI();
         }
       }
   
-      this.state.direction = 'idle';
+      this.state.status = ElevatorStatus.Idle;
       this.updateUI();
     }
   
@@ -296,10 +294,10 @@ export class Elevator {
       const elevatorCar = document.querySelector('.elevator-car') as HTMLElement;
       if (elevatorCar) {
           elevatorCar.setAttribute('data-floor', String(this.state.currentFloor));
-          elevatorCar.classList.toggle('moving', this.state.isMoving);
+          elevatorCar.classList.toggle('moving', this.state.status === ElevatorStatus.Moving);
           
           // Only set bottom position if not animating
-          if (!this.state.isMoving) {
+          if (this.state.status !== ElevatorStatus.Moving) {
               const bottomPosition = ((this.state.currentFloor - 1) / (this.totalFloors - 1)) * 100;
               elevatorCar.style.bottom = `${bottomPosition}%`;
           }
@@ -310,18 +308,12 @@ export class Elevator {
       if (door) door.className = `door ${this.doors.getStatus()}`;
   
       // Update status indicators
-      const directionIndicator = document.querySelector('.direction-indicator');
-      if (directionIndicator) {
-          directionIndicator.textContent = `Direction: ${this.state.direction}`;
-          directionIndicator.className = `direction-indicator ${this.state.direction}`;
-      }
-  
       const doorStatus = document.querySelector('.door-status');
       if (doorStatus) doorStatus.textContent = `Doors: ${this.doors.getStatus()}`;
   
       const movementStatus = document.querySelector('.movement-status');
       if (movementStatus) {
-          movementStatus.textContent = `Status: ${this.state.isMoving ? 'Moving' : 'Stationary'}`;
+          movementStatus.textContent = `Status: ${this.state.status}`;
       }
   
       // Update queue and events status
@@ -330,16 +322,17 @@ export class Elevator {
         queueStatus.innerHTML = this.formatQueueStatus();
       }
   
-      const movingStatus = document.querySelector('.moving-status');
-      if (movingStatus) {
-        movingStatus.textContent = `Moving: ${this.state.isMoving}`;
-      }
-  
       // Update elevator image based on door status
       const elevatorImage = document.querySelector('.elevator-image') as HTMLImageElement;
       if (elevatorImage) {
         elevatorImage.src = `/elevator/elevator-${this.doors.getStatus()}.svg`;
         elevatorImage.alt = `Elevator ${this.doors.getStatus()}`;
+      }
+
+      // Add machine state display
+      const machineStateDisplay = document.querySelector('.movement-status');
+      if (machineStateDisplay) {
+          machineStateDisplay.textContent = `State: ${this.state.status}`;
       }
     }
   
