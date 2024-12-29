@@ -30,22 +30,84 @@
 
 body {
     margin: 0;
+    padding: 1rem;
+    min-height: 100vh;
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
     font-family: 'JetBrainsSans-Regular', sans-serif;
     background-color: var(--bg-primary);
     color: var(--text-primary);
+    box-sizing: border-box;
 }
 
 .elevator-system {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-areas: 
+        "elevator controls queue";
     gap: 2rem;
     padding: 2rem;
     background: var(--bg-secondary);
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    max-width: 1200px;
+    width: 100%;
+    max-height: calc(100vh - 4rem);
+    overflow: hidden;
+}
+
+.elevator-column {
+    grid-area: elevator;
+}
+
+.controls-column {
+    grid-area: controls;
+}
+
+.state-column {
+    grid-area: queue;
+}
+
+.elevator-column,
+.state-column,
+.controls-column {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    height: 100%;
+    overflow-y: auto;
+}
+
+h2 {
+    margin: 0;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #333;
+    color: var(--accent-color);
+    font-size: 1.5rem;
+}
+
+h3 {
+    margin: 0;
+    padding-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-size: 1.2rem;
+}
+
+.queue-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.queue-status {
+    flex: 1;
+    overflow-y: auto;
 }
 
 .elevator-shaft {
@@ -58,6 +120,7 @@ body {
     flex-direction: column-reverse;
     justify-content: space-between;
     padding: 10px 0;
+    margin: 0 auto;
 }
 
 .elevator-shaft::before {
@@ -225,6 +288,7 @@ body {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 0.5rem;
+    margin-top: 1rem;
 }
 
 .floor-button {
@@ -246,6 +310,8 @@ body {
 .elevator-controls {
     display: flex;
     gap: 0.5rem;
+    justify-content: center;
+    margin-top: 1rem;
 }
 
 .door-control {
@@ -273,12 +339,12 @@ body {
 }
 
 .status > div {
+    text-align: left;
+    padding: 0.75rem;
     margin: 0.5rem 0;
-    padding: 0.5rem;
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     border-radius: 4px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-    color: var(--text-primary);
 }
 
 .queue-status {
@@ -312,4 +378,33 @@ body {
 
 .queue-status:not(:empty)[textContent*="Empty"] {
     color: #757575;
+}
+
+/* Add some hover effects */
+.elevator-column:hover,
+.state-column:hover,
+.controls-column:hover {
+    transform: none;
+    transition: none;
+}
+
+/* Add scrollbar styling for columns */
+.elevator-column::-webkit-scrollbar,
+.state-column::-webkit-scrollbar,
+.controls-column::-webkit-scrollbar {
+    width: 8px;
+}
+
+.elevator-column::-webkit-scrollbar-track,
+.state-column::-webkit-scrollbar-track,
+.controls-column::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+    border-radius: 4px;
+}
+
+.elevator-column::-webkit-scrollbar-thumb,
+.state-column::-webkit-scrollbar-thumb,
+.controls-column::-webkit-scrollbar-thumb {
+    background: var(--bg-secondary);
+    border-radius: 4px;
 }

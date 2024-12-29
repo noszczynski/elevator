@@ -37,32 +37,45 @@ export class Elevator {
     }
   
     private initialize(): void {
-      // Create and inject HTML structure
       const appElement = document.getElementById('app');
       if (!appElement) throw new Error('App element not found');
   
       appElement.innerHTML = `
         <div class="elevator-system">
-          <div class="elevator-shaft">
-            <div class="elevator-car" data-floor="${this.state.currentFloor}">
-              <div class="floor-display">${this.state.currentFloor}</div>
-              <div class="door ${this.doors.getStatus()}"></div>
-            </div>
-          </div>
-          <div class="controls">
-            <div class="floor-buttons">
-              ${this.createFloorButtons()}
+          <!-- Column 1: Elevator -->
+          <div class="elevator-column">
+            <h2>Elevator</h2>
+            <div class="elevator-shaft">
+              <div class="elevator-car" data-floor="${this.state.currentFloor}">
+                <div class="floor-display">${this.state.currentFloor}</div>
+                <div class="door ${this.doors.getStatus()}"></div>
+              </div>
             </div>
             <div class="elevator-controls">
               <button class="door-control" data-action="open">Open Door</button>
               <button class="door-control" data-action="close">Close Door</button>
             </div>
+          </div>
+
+          <!-- Column 2: Controls -->
+          <div class="controls-column">
+            <h2>Controls</h2>
+            <div class="floor-buttons">
+              ${this.createFloorButtons()}
+            </div>
             <div class="status">
               <div class="direction-indicator">Direction: ${this.state.direction}</div>
               <div class="door-status">Doors: ${this.doors.getStatus()}</div>
               <div class="movement-status">Status: ${this.state.isMoving ? 'Moving' : 'Stationary'}</div>
-              <div class="queue-status">Queue: ${this.formatQueueStatus()}</div>
               <div class="moving-status">Moving: ${this.state.isMoving}</div>
+            </div>
+          </div>
+
+          <!-- Column 3: Queue -->
+          <div class="state-column">
+            <h2>Event Queue</h2>
+            <div class="queue-panel">
+              <div class="queue-status">Queue: ${this.formatQueueStatus()}</div>
             </div>
           </div>
         </div>
