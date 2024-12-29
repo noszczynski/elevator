@@ -1,11 +1,17 @@
 import { ElevatorDoors } from './elevator-doors';
 
 // Types and interfaces
+type DoorEvent = {
+  type: 'open' | 'close';
+  source: 'button' | 'arrival';
+};
+
 interface ElevatorState {
     currentFloor: number;
     destinationQueue: number[];
     direction: 'up' | 'down' | 'idle';
     isMoving: boolean;
+    doorEventQueue: DoorEvent[]; // Add door event queue
 }
 
 export class Elevator {
@@ -21,7 +27,8 @@ export class Elevator {
         currentFloor: 1,
         destinationQueue: [],
         direction: 'idle',
-        isMoving: false
+        isMoving: false,
+        doorEventQueue: [] // Initialize door event queue
       };
       
       this.initialize();
@@ -52,6 +59,9 @@ export class Elevator {
               <div class="direction-indicator">Direction: ${this.state.direction}</div>
               <div class="door-status">Doors: ${this.doors.getStatus()}</div>
               <div class="movement-status">Status: ${this.state.isMoving ? 'Moving' : 'Stationary'}</div>
+              <div class="queue-status">Queue: ${this.state.destinationQueue.join(', ') || 'Empty'}</div>
+              <div class="moving-status">Moving: ${this.state.isMoving}</div>
+              <div class="door-events">Door Events: ${this.state.doorEventQueue.length}</div>
             </div>
           </div>
         </div>
@@ -80,8 +90,14 @@ export class Elevator {
       document.querySelectorAll('.door-control').forEach(button => {
         button.addEventListener('click', (e) => {
           const action = (e.target as HTMLElement).dataset.action;
-          if (action === 'open') this.doors.open();
-          if (action === 'close') this.doors.close();
+          if (action === 'open' && !this.state.isMoving) {
+            this.state.doorEventQueue.push({ type: 'open', source: 'button' });
+            this.processDoorEvents();
+          }
+          if (action === 'close') {
+            this.state.doorEventQueue.push({ type: 'close', source: 'button' });
+            this.processDoorEvents();
+          }
         });
       });
     }
@@ -104,17 +120,19 @@ export class Elevator {
           this.state.direction = nextFloor > this.state.currentFloor ? 'up' : 'down';
           this.state.isMoving = true;
           
-          if (this.doors.getStatus() === 'open') {
-              await this.doors.close();
-          }
+          // Force close doors before moving
+          await this.doors.close();
           
           this.updateUI();
           await this.moveToFloor(nextFloor);
           this.state.destinationQueue.shift();
           
           this.state.isMoving = false;
-          await this.doors.open();
-          await this.doors.close();
+          
+          // Add door open/close events after arrival
+          this.state.doorEventQueue.push({ type: 'open', source: 'arrival' });
+          this.state.doorEventQueue.push({ type: 'close', source: 'arrival' });
+          await this.processDoorEvents();
       }
   
       this.state.direction = 'idle';
@@ -209,6 +227,38 @@ export class Elevator {
       const movementStatus = document.querySelector('.movement-status');
       if (movementStatus) {
           movementStatus.textContent = `Status: ${this.state.isMoving ? 'Moving' : 'Stationary'}`;
+      }
+  
+      // Update queue and events status
+      const queueStatus = document.querySelector('.queue-status');
+      if (queueStatus) {
+        queueStatus.textContent = `Queue: ${this.state.destinationQueue.join(', ') || 'Empty'}`;
+      }
+  
+      const movingStatus = document.querySelector('.moving-status');
+      if (movingStatus) {
+        movingStatus.textContent = `Moving: ${this.state.isMoving}`;
+      }
+  
+      const doorEvents = document.querySelector('.door-events');
+      if (doorEvents) {
+        doorEvents.textContent = `Door Events: ${this.state.doorEventQueue.length}`;
+      }
+    }
+  
+    private async processDoorEvents(): Promise<void> {
+      if (this.state.isMoving) return; // Don't process door events while moving
+      
+      while (this.state.doorEventQueue.length > 0) {
+        const event = this.state.doorEventQueue[0];
+        
+        if (event.type === 'open' && !this.state.isMoving) {
+          await this.doors.open();
+        } else if (event.type === 'close') {
+          await this.doors.close();
+        }
+        
+        this.state.doorEventQueue.shift();
       }
     }
   }
