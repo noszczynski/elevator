@@ -92,7 +92,11 @@ export class Elevator {
             <div class="elevator-shaft">
               <div class="elevator-car" data-floor="${this.state.currentFloor}">
                 <div class="floor-display">${this.state.currentFloor}</div>
-                <div class="door ${this.doors.getStatus()}"></div>
+                <img 
+                  class="elevator-image" 
+                  src="/elevator/elevator-${this.doors.getStatus()}.svg" 
+                  alt="Elevator ${this.doors.getStatus()}"
+                />
               </div>
             </div>
             <div class="elevator-controls">
@@ -329,6 +333,13 @@ export class Elevator {
       const movingStatus = document.querySelector('.moving-status');
       if (movingStatus) {
         movingStatus.textContent = `Moving: ${this.state.isMoving}`;
+      }
+  
+      // Update elevator image based on door status
+      const elevatorImage = document.querySelector('.elevator-image') as HTMLImageElement;
+      if (elevatorImage) {
+        elevatorImage.src = `/elevator/elevator-${this.doors.getStatus()}.svg`;
+        elevatorImage.alt = `Elevator ${this.doors.getStatus()}`;
       }
     }
   

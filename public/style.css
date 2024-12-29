@@ -14,9 +14,10 @@
     color: rgba(255, 255, 255, 0.87);
     background-color: #151515;
     text-align: center;
-    --elevator-width: 200px;
+    --elevator-width: calc(var(--elevator-height) / var(--floors));
     --elevator-height: 600px;
-    --floor-height: 60px;
+    --floors: 10;
+    --floor-height: calc(var(--elevator-height) / var(--floors));
     --bg-primary: #1a1a1a;
     --bg-secondary: #2a2a2a;
     --text-primary: #ffffff;
@@ -52,6 +53,10 @@ body {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     max-width: 1200px;
+    width: 100%;
+    @media (max-width: 1200px) {
+        max-width: 100%;
+    }
     width: 100%;
     max-height: calc(100vh - 4rem);
     overflow: hidden;
@@ -119,7 +124,6 @@ h3 {
     display: flex;
     flex-direction: column-reverse;
     justify-content: space-between;
-    padding: 10px 0;
     margin: 0 auto;
 }
 
@@ -140,14 +144,13 @@ h3 {
 }
 
 .elevator-car {
-    width: calc(var(--elevator-width) - 20px);
+    width: calc(var(--elevator-width));
     height: var(--floor-height);
-    background: #0a3d0a;
     position: absolute;
-    left: 10px;
     transition: bottom 1.5s var(--floor-transition);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    background: linear-gradient(145deg, #0a3d0a, #062806);
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .elevator-car[data-floor="1"] { bottom: 0; }
@@ -161,23 +164,11 @@ h3 {
 .elevator-car[data-floor="9"] { bottom: calc(var(--elevator-height) / 10 * 8); }
 .elevator-car[data-floor="10"] { bottom: calc(var(--elevator-height) / 10 * 9); }
 
-.elevator-car::after {
-    content: '';
+.elevator-image {
     position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #00ff00;
-    box-shadow: 0 0 8px #00ff00;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.elevator-car.moving::after {
-    opacity: 1;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
 }
 
 .floor-display {
@@ -189,92 +180,6 @@ h3 {
     font-size: 24px;
     font-weight: bold;
     text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
-}
-
-.door {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    overflow: hidden;
-}
-
-/* Split door into two panels */
-.door::before,
-.door::after {
-    content: '';
-    position: absolute;
-    width: 50%;
-    height: 100%;
-    background: #660000;
-    transition: transform 1.5s ease-in-out;
-}
-
-.door::before {
-    left: 0;
-    transform-origin: left;
-}
-
-.door::after {
-    right: 0;
-    transform-origin: right;
-}
-
-/* Door states */
-.door.closed::before,
-.door.closed::after {
-    transform: scaleX(1);
-}
-
-.door.open::before {
-    transform: scaleX(0);
-}
-
-.door.open::after {
-    transform: scaleX(0);
-}
-
-.door.pending::before,
-.door.pending::after {
-    animation: doorPending 1s ease-in-out infinite;
-}
-
-/* Door panel seam effect */
-.door::before {
-    border-right: 2px solid rgba(0, 0, 0, 0.2);
-}
-
-.door::after {
-    border-left: 2px solid rgba(0, 0, 0, 0.2);
-}
-
-@keyframes doorPending {
-    0% {
-        background: #660000;
-    }
-    50% {
-        background: #800000;
-    }
-    100% {
-        background: #660000;
-    }
-}
-
-/* Prevent animation during elevator movement */
-.elevator-car.moving .door:not(.pending)::before,
-.elevator-car.moving .door:not(.pending)::after {
-    transition: none;
-}
-
-/* Add metallic texture effect */
-.door::before,
-.door::after {
-    background-image: linear-gradient(
-        145deg,
-        rgba(255, 255, 255, 0.05) 0%,
-        transparent 50%,
-        rgba(0, 0, 0, 0.05) 100%
-    );
 }
 
 .controls {
