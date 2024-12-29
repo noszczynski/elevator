@@ -1,5 +1,7 @@
 import { ElevatorDoors } from './elevator-doors';
 import { ElevatorStatus } from './store/elevator/states';
+import StateMachine from './store/machine';
+import transitions from './store/elevator/transitions';
 
 // Define action types
 const OPEN_DOOR = 'OPEN_DOOR';
@@ -47,20 +49,43 @@ const moveToFloor = (floor: number, source: 'button'): MoveToFloorAction => ({
 interface ElevatorState {
     currentFloor: number;
     queue: ElevatorAction[];
-    status: ElevatorStatus;
+    machineState: ElevatorStatus;
 }
 
 export class Elevator {
     private state: ElevatorState;
     private doors: ElevatorDoors;
     private readonly totalFloors: number;
+    private machine: StateMachine;
     
     constructor({ floors }: { floors: number }) {
       this.totalFloors = floors;
       this.doors = new ElevatorDoors();
-      this.state = { currentFloor: 1, queue: [], status: ElevatorStatus.Idle };
+      
+      // Initialize state machine
+      this.machine = new StateMachine({
+        initial: ElevatorStatus.Idle,
+        states: ElevatorStatus,
+        transitions: transitions,
+      });
+
+      // Subscribe to state machine updates
+      this.machine.subscribe('update', (newState, data) => {
+        this.handleStateChange(newState, data);
+      });
+      
+      this.state = { 
+        currentFloor: 1, 
+        queue: [], 
+        machineState: ElevatorStatus.Idle 
+      };
       
       this.initialize();
+    }
+
+    private handleStateChange(newState: ElevatorStatus, data: any) {
+      this.state.machineState = newState;
+      this.updateUI();
     }
 
     private log() {
@@ -100,7 +125,7 @@ export class Elevator {
             </div>
             <div class="status">
               <div class="door-status">Doors: ${this.doors.getStatus()}</div>
-              <div class="movement-status">Status: ${this.state.status}</div>
+              <div class="movement-status">Status: ${this.state.machineState}</div>
             </div>
           </div>
 
@@ -137,7 +162,7 @@ export class Elevator {
       document.querySelectorAll('.door-control').forEach(button => {
         button.addEventListener('click', (e) => {
           const action = (e.target as HTMLElement).dataset.action as 'open' | 'close';
-          if (action === 'open' && this.state.status !== ElevatorStatus.DoorOpen) {
+          if (action === 'open' && this.state.machineState !== ElevatorStatus.DoorOpen) {
             this.state.queue.push(openDoor('button'));
             this.updateUI();
             this.processQueue();
@@ -156,8 +181,8 @@ export class Elevator {
 
       const newEvents: ElevatorAction[] = [];
 
-      if (this.state.status === ElevatorStatus.DoorOpen || 
-          this.state.status === ElevatorStatus.DoorOpening) {
+      if (this.state.machineState === ElevatorStatus.DoorOpen || 
+          this.state.machineState === ElevatorStatus.DoorOpening) {
           newEvents.push(closeDoor('button'));
       }
 
@@ -170,8 +195,7 @@ export class Elevator {
       this.state.queue.push(...newEvents);
       this.updateUI();
       
-      // Only start processing if we're not already moving
-      if (this.state.status === ElevatorStatus.Idle) {
+      if (this.state.machineState === ElevatorStatus.Idle) {
         await this.processQueue();
       }
     }
@@ -183,33 +207,29 @@ export class Elevator {
 
       switch (event.type) {
         case MOVE_TO_FLOOR:
-          if (this.state.status === ElevatorStatus.Idle) {
+          if (this.state.machineState === ElevatorStatus.Idle) {
+            await this.machine.performTransition('moveToFloor');
             await this.moveToFloor(event.floor);
             this.state.queue.shift();
-            // Process next item immediately after movement
             await this.processQueue();
           }
           break;
 
         case OPEN_DOOR:
-          if (this.state.status !== ElevatorStatus.DoorOpen && 
-              this.state.status !== ElevatorStatus.DoorOpening) {
-            this.state.status = ElevatorStatus.DoorOpening;
+          if (this.state.machineState !== ElevatorStatus.DoorOpen && 
+              this.state.machineState !== ElevatorStatus.DoorOpening) {
+            await this.machine.performTransition('openDoor');
             await this.doors.open();
-            this.state.status = ElevatorStatus.DoorOpen;
             this.state.queue.shift();
-            // Process next item immediately
             await this.processQueue();
           }
           break;
 
         case CLOSE_DOOR:
-          if (this.state.status === ElevatorStatus.DoorOpen) {
-            this.state.status = ElevatorStatus.DoorClosing;
+          if (this.state.machineState === ElevatorStatus.DoorOpen) {
+            await this.machine.performTransition('closeDoor');
             await this.doors.close();
-            this.state.status = ElevatorStatus.Idle;
             this.state.queue.shift();
-            // Process next item immediately
             await this.processQueue();
           }
           break;
@@ -219,30 +239,26 @@ export class Elevator {
     }
   
     private async moveToFloor(targetFloor: number): Promise<void> {
-      // Calculate total movement time based on floor distance
+      await this.machine.performTransition('moveToFloor');
+      
       const floorDifference = Math.abs(targetFloor - this.state.currentFloor);
-      // Base time plus additional time per floor, with a maximum
-      const baseTime = 1000; // 1 second base time
-      const timePerFloor = 300; // 0.3 seconds per additional floor
+      const baseTime = 1000;
+      const timePerFloor = 300;
       const totalMoveTime = Math.min(
-          baseTime + (floorDifference - 1) * timePerFloor,
-          3000 // Maximum 3 seconds for any trip
+        baseTime + (floorDifference - 1) * timePerFloor,
+        3000
       );
       
-      // Start movement
       const startFloor = this.state.currentFloor;
       const startTime = Date.now();
       
-      // Animate movement
       const animate = () => {
           const elapsedTime = Date.now() - startTime;
           const progress = Math.min(elapsedTime / totalMoveTime, 1);
           
-          // Use easing function for smoother acceleration/deceleration
           const easeProgress = easeInOutCubic(progress);
           
           if (progress < 1) {
-              // Calculate intermediate position
               const elevatorCar = document.querySelector('.elevator-car') as HTMLElement;
               if (elevatorCar) {
                   const currentPosition = startFloor + (targetFloor - startFloor) * easeProgress;
@@ -251,74 +267,64 @@ export class Elevator {
               }
               requestAnimationFrame(animate);
           } else {
-              // Movement complete, update final position
               this.state.currentFloor = targetFloor;
               this.updateUI();
           }
       };
       
-      // Easing function for smooth acceleration/deceleration
       const easeInOutCubic = (x: number): number => {
           return x < 0.5
               ? 4 * x * x * x
               : 1 - Math.pow(-2 * x + 2, 3) / 2;
       };
       
-      // Start animation
       requestAnimationFrame(animate);
       
-      // Wait for movement to complete
       await new Promise(resolve => setTimeout(resolve, totalMoveTime));
+
+      await this.machine.performTransition('arrive');
     }
   
     private updateUI(): void {
-      // Update floor display
       const floorDisplay = document.querySelector('.floor-display');
       if (floorDisplay) floorDisplay.textContent = String(this.state.currentFloor);
   
-      // Update elevator car position and movement status
       const elevatorCar = document.querySelector('.elevator-car') as HTMLElement;
       if (elevatorCar) {
           elevatorCar.setAttribute('data-floor', String(this.state.currentFloor));
-          elevatorCar.classList.toggle('moving', this.state.status === ElevatorStatus.Moving);
+          elevatorCar.classList.toggle('moving', this.state.machineState === ElevatorStatus.Moving);
           
-          // Only set bottom position if not animating
-          if (this.state.status !== ElevatorStatus.Moving) {
+          if (this.state.machineState !== ElevatorStatus.Moving) {
               const bottomPosition = ((this.state.currentFloor - 1) / (this.totalFloors - 1)) * 100;
               elevatorCar.style.bottom = `${bottomPosition}%`;
           }
       }
   
-      // Update door status
       const door = document.querySelector('.door');
       if (door) door.className = `door ${this.doors.getStatus()}`;
   
-      // Update status indicators
       const doorStatus = document.querySelector('.door-status');
       if (doorStatus) doorStatus.textContent = `Doors: ${this.doors.getStatus()}`;
   
       const movementStatus = document.querySelector('.movement-status');
       if (movementStatus) {
-          movementStatus.textContent = `Status: ${this.state.status}`;
+          movementStatus.textContent = `Status: ${this.state.machineState}`;
       }
   
-      // Update queue and events status
       const queueStatus = document.querySelector('.queue-status');
       if (queueStatus) {
         queueStatus.innerHTML = this.formatQueueStatus();
       }
   
-      // Update elevator image based on door status
       const elevatorImage = document.querySelector('.elevator-image') as HTMLImageElement;
       if (elevatorImage) {
         elevatorImage.src = `/elevator/elevator-${this.doors.getStatus()}.svg`;
         elevatorImage.alt = `Elevator ${this.doors.getStatus()}`;
       }
 
-      // Add machine state display
       const machineStateDisplay = document.querySelector('.movement-status');
       if (machineStateDisplay) {
-          machineStateDisplay.textContent = `State: ${this.state.status}`;
+          machineStateDisplay.textContent = `State: ${this.state.machineState}`;
       }
     }
   
@@ -340,10 +346,9 @@ export class Elevator {
 
     private canAddFloorRequest(floor: number): boolean {
       if (floor === this.state.currentFloor) return false;
-      if (this.state.status === ElevatorStatus.Moving || 
-          this.state.status === ElevatorStatus.MovingDown) return false;
+      if (this.state.machineState === ElevatorStatus.Moving || 
+          this.state.machineState === ElevatorStatus.MovingDown) return false;
       
-      // Allow multiple floor requests
       return true;
     }
   }

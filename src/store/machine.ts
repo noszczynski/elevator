@@ -2,7 +2,7 @@ import { ElevatorStatus } from './elevator/states';
 import { TransitionsConfig, StatesConfig } from './types';
 
 interface StateMachineConfig {
-  initial: ElevatorStatus.Idle;
+  initial: ElevatorStatus;
   states: StatesConfig<ElevatorStatus>;
   transitions: TransitionsConfig<ElevatorStatus>;
   data?: any | null;
@@ -11,9 +11,9 @@ interface StateMachineConfig {
 class StateMachine {
     private transitions: TransitionsConfig<ElevatorStatus>;
     private states: StatesConfig<ElevatorStatus>;
-    private state: ElevatorState;
+    private state: ElevatorStatus;
     private data: any | null;
-    private _onUpdate: ((state: ElevatorState, data: any) => void) | null;
+    private _onUpdate: ((state: ElevatorStatus, data: any) => void) | null;
 
     constructor({
       initial, 
@@ -33,12 +33,11 @@ class StateMachine {
       return this.states[this.state]
     }
   
-    _updateState(newState: ElevatorState, data: any | null) {
-      this.state = newState
-      this.data = data
+    _updateState(newState: ElevatorStatus, data: any | null) {
+      this.state = newState;
+      this.data = data;
       
-      this._onUpdate 
-        && this._onUpdate(newState, data)
+      this._onUpdate && this._onUpdate(newState, data);
     }
   
     async performTransition(transitionName: string) {
@@ -56,8 +55,8 @@ class StateMachine {
       }
     }
   
-    subscribe(event: string, callback: (state: ElevatorState, data: any) => void) {
-      if (event === 'update') this._onUpdate = callback || null
+    subscribe(event: string, callback: (state: ElevatorStatus, data: any) => void) {
+      if (event === 'update') this._onUpdate = callback || null;
     }
 }
 
