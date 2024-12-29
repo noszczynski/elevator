@@ -5,7 +5,6 @@ import { ElevatorStatus } from './store/elevator/states';
 const OPEN_DOOR = 'OPEN_DOOR';
 const CLOSE_DOOR = 'CLOSE_DOOR';
 const MOVE_TO_FLOOR = 'MOVE_TO_FLOOR';
-const WAIT_ON_FLOOR = 'WAIT_ON_FLOOR';
 
 // Define action interfaces
 interface OpenDoorAction {
@@ -24,13 +23,8 @@ interface MoveToFloorAction {
   source: 'button';
 }
 
-interface WaitOnFloorAction {
-  type: typeof WAIT_ON_FLOOR;
-  duration: number;  // Duration in milliseconds
-}
-
 // Union type for all actions
-type ElevatorAction = OpenDoorAction | CloseDoorAction | MoveToFloorAction | WaitOnFloorAction;
+type ElevatorAction = OpenDoorAction | CloseDoorAction | MoveToFloorAction;
 
 // Action creators
 const openDoor = (source: 'button' | 'arrival'): OpenDoorAction => ({
@@ -47,11 +41,6 @@ const moveToFloor = (floor: number, source: 'button'): MoveToFloorAction => ({
   type: MOVE_TO_FLOOR,
   floor,
   source,
-});
-
-const waitOnFloor = (duration: number = 5000): WaitOnFloorAction => ({
-  type: WAIT_ON_FLOOR,
-  duration,
 });
 
 // Types and interfaces
@@ -72,6 +61,10 @@ export class Elevator {
       this.state = { currentFloor: 1, queue: [], status: ElevatorStatus.Idle };
       
       this.initialize();
+    }
+
+    private log() {
+      console.dir(this.state, { depth: null });
     }
   
     private initialize(): void {
@@ -159,12 +152,7 @@ export class Elevator {
     }
   
     private async requestFloor(floor: number): Promise<void> {
-      if (floor === this.state.currentFloor || 
-          this.state.status === ElevatorStatus.Moving || 
-          this.state.status === ElevatorStatus.MovingDown) return;
-
-      const hasFloorDestinations = this.state.queue.some(event => event.type === MOVE_TO_FLOOR);
-      if (hasFloorDestinations) return;
+      if (!this.canAddFloorRequest(floor)) return;
 
       const newEvents: ElevatorAction[] = [];
 
@@ -176,59 +164,57 @@ export class Elevator {
       newEvents.push(
           moveToFloor(floor, 'button'),
           openDoor('arrival'),
-          waitOnFloor(5000),
           closeDoor('arrival')
       );
 
       this.state.queue.push(...newEvents);
-      this.state.status = floor > this.state.currentFloor ? 
-          ElevatorStatus.Moving : 
-          ElevatorStatus.MovingDown;
-      
       this.updateUI();
-      if (this.state.status !== ElevatorStatus.Moving) this.processQueue();
+      
+      // Only start processing if we're not already moving
+      if (this.state.status === ElevatorStatus.Idle) {
+        await this.processQueue();
+      }
     }
   
     private async processQueue(): Promise<void> {
-      if (this.state.status !== ElevatorStatus.Moving) return;
-  
-      while (this.state.queue.length > 0) {
-        const event = this.state.queue[0];
-  
-        if (event.type === OPEN_DOOR) {
+      if (this.state.queue.length === 0) return;
+      
+      const event = this.state.queue[0];
+
+      switch (event.type) {
+        case MOVE_TO_FLOOR:
           if (this.state.status === ElevatorStatus.Idle) {
-              this.state.status = ElevatorStatus.DoorOpening;
-              await this.doors.open();
-              this.state.status = ElevatorStatus.DoorOpen;
+            await this.moveToFloor(event.floor);
+            this.state.queue.shift();
+            // Process next item immediately after movement
+            await this.processQueue();
           }
-          this.state.queue.shift();
-          this.updateUI();
-        } else if (event.type === CLOSE_DOOR) {
+          break;
+
+        case OPEN_DOOR:
+          if (this.state.status !== ElevatorStatus.DoorOpen && 
+              this.state.status !== ElevatorStatus.DoorOpening) {
+            this.state.status = ElevatorStatus.DoorOpening;
+            await this.doors.open();
+            this.state.status = ElevatorStatus.DoorOpen;
+            this.state.queue.shift();
+            // Process next item immediately
+            await this.processQueue();
+          }
+          break;
+
+        case CLOSE_DOOR:
           if (this.state.status === ElevatorStatus.DoorOpen) {
-              this.state.status = ElevatorStatus.DoorClosing;
-              await this.doors.close();
-              this.state.status = ElevatorStatus.Idle;
+            this.state.status = ElevatorStatus.DoorClosing;
+            await this.doors.close();
+            this.state.status = ElevatorStatus.Idle;
+            this.state.queue.shift();
+            // Process next item immediately
+            await this.processQueue();
           }
-          this.state.queue.shift();
-          this.updateUI();
-        } else if (event.type === WAIT_ON_FLOOR) {
-          await new Promise(resolve => setTimeout(resolve, event.duration));
-          this.state.queue.shift();
-          this.updateUI();
-        } else if (event.type === MOVE_TO_FLOOR) {
-          this.state.status = ElevatorStatus.Moving;
-          
-          this.updateUI();
-          await this.moveToFloor(event.floor);
-          
-          this.state.status = ElevatorStatus.Idle;
-          this.state.queue.shift();
-          
-          this.updateUI();
-        }
+          break;
       }
-  
-      this.state.status = ElevatorStatus.Idle;
+
       this.updateUI();
     }
   
@@ -344,13 +330,20 @@ export class Elevator {
                 return `<li>Door open</li>`;
             } else if (event.type === CLOSE_DOOR) {
                 return `<li>Door close</li>`;
-            } else if (event.type === WAIT_ON_FLOOR) {
-                return `<li>Wait ${event.duration/1000}s</li>`;
             } else {
                 return `<li>Floor ${event.floor}</li>`;
             }
         }).join('') || '<li>Empty</li>'}
       </ul>
     `;
+    }
+
+    private canAddFloorRequest(floor: number): boolean {
+      if (floor === this.state.currentFloor) return false;
+      if (this.state.status === ElevatorStatus.Moving || 
+          this.state.status === ElevatorStatus.MovingDown) return false;
+      
+      // Allow multiple floor requests
+      return true;
     }
   }
