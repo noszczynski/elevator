@@ -57,13 +57,13 @@ npm run preview
 ```
 elevator/
 ├── src/
-│   ├── main.ts          # Application entry point
-│   ├── elevator.ts      # Core elevator logic
-│   └── elevator-doors.ts # Door animation handling
+│   ├── main.ts             # Application entry point
+│   ├── elevator.ts         # Core elevator logic
+│   └── elevator-doors.ts   # Elevator doors logic
 ├── public/
-│   ├── fonts/           # Project fonts
-│   └── style.css        # Global styles
-└── index.html           # Main HTML file
+│   ├── fonts/              # Project fonts
+│   └── style.css           # Global styles
+└── index.html              # Main HTML file
 ```
 
 ## Technologies Used
