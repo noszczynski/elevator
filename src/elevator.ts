@@ -3,6 +3,7 @@ import { ElevatorStatus } from './store/elevator/states';
 import StateMachine from './store/machine';
 import transitions from './store/elevator/transitions';
 import { ElevatorUI } from './elevator-ui';
+import { EventEmitter } from './event-emitter';
 
 // Define action types
 const OPEN_DOOR = 'OPEN_DOOR';
@@ -60,6 +61,11 @@ export class Elevator {
     private readonly totalFloors: number;
     private machine: StateMachine;
     private ui: ElevatorUI;
+    private interval: number;
+    private emitter: EventEmitter<{
+        'update_state': [newState: ElevatorStatus, data: any];
+        'check_queue': [];
+    }>;
     
     constructor({ floors, ui }: { floors: number; ui: ElevatorUI }) {
         this.totalFloors = floors;
@@ -77,14 +83,38 @@ export class Elevator {
             this.handleStateChange(newState, data);
         });
         
-        this.state = { 
+        this.state = {
             currentFloor: 1, 
-            queue: [], 
+            queue: [],
             machineState: ElevatorStatus.Idle,
             queueProcessing: false
         };
+
+        this.emitter = new EventEmitter<{
+            'update_state': [newState: ElevatorStatus, data: any];
+            'check_queue': [];
+        }>();
+
+        this.emitter.on('update_state', (newState, data) => {
+            console.log('[EventEmitter] update_state', newState, data);
+            this.machine.performTransition(data.transition);
+            this.handleStateChange(newState, data);
+        });
+
+        this.emitter.on('check_queue', () => {
+          console.log('[EventEmitter] check_queue');
+          this.processQueue();
+      });
+
+        this.interval = setInterval(() => {
+            this.emitter.emit('check_queue');
+        }, 1000);
         
         this.initialize();
+    }
+
+    public destroy() {
+        clearInterval(this.interval);
     }
 
     private handleStateChange(newState: ElevatorStatus, data: any) {
@@ -106,12 +136,10 @@ export class Elevator {
                 if (action === 'open' && this.state.machineState !== ElevatorStatus.DoorOpen) {
                     this.state.queue.push(openDoor('button'));
                     this.updateUI();
-                    this.processQueue();
                 }
                 if (action === 'close') {
                     this.state.queue.push(closeDoor('button'));
                     this.updateUI();
-                    this.processQueue();
                 }
             },
             () => this.log()
@@ -136,11 +164,6 @@ export class Elevator {
       this.state.queue.push(...newEvents);
       this.optimizeQueue();
       this.updateUI();
-
-      // If the queue length is the same as the new events, process the queue
-      if (this.state.queue.length === newEvents.length) {
-        await this.processQueue();
-      }
     }
   
     private async processQueue(): Promise<void> {
@@ -160,14 +183,13 @@ export class Elevator {
                   if (this.state.machineState === ElevatorStatus.Idle) {
                       await this.moveToFloor(event.floor);
                       this.state.queue.shift();
-                      await this.processQueue();
                   }
                   break;
 
               case OPEN_DOOR:
                   if (this.state.machineState !== ElevatorStatus.DoorOpen && 
                       this.state.machineState !== ElevatorStatus.DoorOpening) {
-                      await this.machine.performTransition('openDoor');
+                      this.emitter.emit('update_state', ElevatorStatus.DoorOpening, { transition: 'openDoor' });
                       
                       await this.doors.open();
                       await this.updateUI();
@@ -176,13 +198,12 @@ export class Elevator {
                       await this.updateUI();
 
                       this.state.queue.shift();
-                      await this.processQueue();
                   }
                   break;
 
               case CLOSE_DOOR:
                   if (this.state.machineState === ElevatorStatus.DoorOpen) {
-                      await this.machine.performTransition('closeDoor');
+                      this.emitter.emit('update_state', ElevatorStatus.DoorClosing, { transition: 'closeDoor' });
                       
                       await this.doors.close();
                       await this.updateUI();
@@ -191,7 +212,6 @@ export class Elevator {
                       await this.updateUI();
 
                       this.state.queue.shift();
-                      await this.processQueue();
                   }
                   break;
           }
@@ -205,7 +225,7 @@ export class Elevator {
     }
   
     private async moveToFloor(targetFloor: number): Promise<void> {
-        await this.machine.performTransition('moveToFloor');
+        this.emitter.emit('update_state', ElevatorStatus.Moving, { transition: 'moveToFloor' });
         
         const floorDifference = Math.abs(targetFloor - this.state.currentFloor);
         const baseTime = 1000;
@@ -247,7 +267,7 @@ export class Elevator {
         requestAnimationFrame(animate);
         
         await new Promise(resolve => setTimeout(resolve, totalMoveTime));
-        await this.machine.performTransition('arrive');
+        this.emitter.emit('update_state', ElevatorStatus.Idle, { transition: 'arrive' });
     }
   
     private updateUI(): void {
