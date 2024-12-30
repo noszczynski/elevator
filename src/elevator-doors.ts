@@ -2,7 +2,6 @@ import { ElevatorStatus } from "./store/elevator/states";
 
 export class ElevatorDoors {
   private doorStatus: ElevatorStatus;
-  private readonly doorDelay: number = 3000;
   private isProcessing: boolean = false;
 
   constructor() {

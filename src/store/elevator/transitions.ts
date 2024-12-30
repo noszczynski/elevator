@@ -11,36 +11,33 @@ async function* moveElevator(
   current?: MachineState<ElevatorStatus, any>
 ): AsyncGenerator<StateMessage<ElevatorStatus, number>> {
   // Get target floor from current state data
-  const targetFloor = current?.data;
+  const targetFloor = current?.data?.targetFloor;
   
   // If no target floor, do nothing
   if (!targetFloor) return
 
   // Start moving up or down
-  yield message(ElevatorStatus.Moving, targetFloor);
-  
-  // Simulate movement time
-  await new Promise(resolve => setTimeout(resolve, 2000));
-  
-  // When arrived, start door opening sequence
-  yield message(ElevatorStatus.DoorOpening, targetFloor);
+  yield message(ElevatorStatus.Moving, { targetFloor });
 }
 
 // Door operations
 async function* openDoor(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
   yield message(ElevatorStatus.DoorOpening);
-  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+async function* confirmDoorOpen(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
   yield message(ElevatorStatus.DoorOpen);
 }
 
 async function* closeDoor(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
   yield message(ElevatorStatus.DoorClosing);
-  await new Promise(resolve => setTimeout(resolve, 1000));
+}
+
+async function* confirmDoorClosed(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
   yield message(ElevatorStatus.Idle);
 }
 
-// Reset to idle state
-async function* waiting(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
+async function* arrive(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
   yield message(ElevatorStatus.Idle);
 }
 
@@ -49,29 +46,24 @@ async function* waiting(): AsyncGenerator<StateMessage<ElevatorStatus, any>> {
  */
 const transitions: TransitionsConfig<ElevatorStatus> = {
   [ElevatorStatus.Idle]: {
-    moveToFloor: moveElevator satisfies TransitionFunction<ElevatorStatus>,
-    openDoor: openDoor satisfies TransitionFunction<ElevatorStatus>,
+    moveToFloor: moveElevator,
+    openDoor: openDoor,
   },
 
   [ElevatorStatus.Moving]: {
-    arrive: openDoor satisfies TransitionFunction<ElevatorStatus>,
+    arrive: arrive,
   },
 
   [ElevatorStatus.DoorOpen]: {
-    closeDoor: closeDoor satisfies TransitionFunction<ElevatorStatus>,
-    waiting: waiting satisfies TransitionFunction<ElevatorStatus>,
+    closeDoor: closeDoor,
   },
 
   [ElevatorStatus.DoorOpening]: {
-    complete: async function* () {
-      yield message(ElevatorStatus.DoorOpen);
-    } satisfies TransitionFunction<ElevatorStatus>,
+    complete: confirmDoorOpen,
   },
 
   [ElevatorStatus.DoorClosing]: {
-    complete: async function* () {
-      yield message(ElevatorStatus.Idle);
-    } satisfies TransitionFunction<ElevatorStatus>,
+    complete: confirmDoorClosed,
   },
 }
 

@@ -187,13 +187,19 @@ export class Elevator {
                   break;
 
               case OPEN_DOOR:
-                  if (this.state.machineState !== ElevatorStatus.DoorOpen && 
-                      this.state.machineState !== ElevatorStatus.DoorOpening) {
+                if (this.state.machineState === ElevatorStatus.DoorOpen) {
+                  this.state.queue.shift();
+                  break;
+                }
+
+                  if (this.state.machineState !== ElevatorStatus.DoorOpening) {
                       this.emitter.emit('update_state', ElevatorStatus.DoorOpening, { transition: 'openDoor' });
                       
                       await this.doors.open();
                       await this.updateUI();
                       await new Promise(resolve => setTimeout(resolve, 300));
+                      
+                      this.emitter.emit('update_state', ElevatorStatus.DoorOpen, { transition: 'complete' });
                       await this.doors.confirmOpen();
                       await this.updateUI();
 
@@ -202,12 +208,19 @@ export class Elevator {
                   break;
 
               case CLOSE_DOOR:
+                if (this.state.machineState === ElevatorStatus.DoorClosing) {
+                  this.state.queue.shift();
+                  break;
+                }
+
                   if (this.state.machineState === ElevatorStatus.DoorOpen) {
                       this.emitter.emit('update_state', ElevatorStatus.DoorClosing, { transition: 'closeDoor' });
                       
                       await this.doors.close();
                       await this.updateUI();
                       await new Promise(resolve => setTimeout(resolve, 300));
+                      
+                      this.emitter.emit('update_state', ElevatorStatus.Idle, { transition: 'complete' });
                       await this.doors.confirmClose();
                       await this.updateUI();
 
@@ -225,8 +238,6 @@ export class Elevator {
     }
   
     private async moveToFloor(targetFloor: number): Promise<void> {
-        this.emitter.emit('update_state', ElevatorStatus.Moving, { transition: 'moveToFloor' });
-        
         const floorDifference = Math.abs(targetFloor - this.state.currentFloor);
         const baseTime = 1000;
         const timePerFloor = 300;
@@ -263,11 +274,19 @@ export class Elevator {
                 ? 4 * x * x * x
                 : 1 - Math.pow(-2 * x + 2, 3) / 2;
         };
+
+        this.emitter.emit('update_state', ElevatorStatus.Moving, { 
+            transition: 'moveToFloor', 
+            targetFloor 
+        });
         
         requestAnimationFrame(animate);
+
+        await new Promise<void>(resolve => setTimeout(resolve, totalMoveTime));
         
-        await new Promise(resolve => setTimeout(resolve, totalMoveTime));
-        this.emitter.emit('update_state', ElevatorStatus.Idle, { transition: 'arrive' });
+        this.emitter.emit('update_state', ElevatorStatus.Idle, { 
+            transition: 'arrive'
+        });
     }
   
     private updateUI(): void {
@@ -293,7 +312,7 @@ export class Elevator {
                 return `<li>Door open</li>`;
             } else if (event.type === CLOSE_DOOR) {
                 return `<li>Door close</li>`;
-            } else {
+            } else if (event.type === MOVE_TO_FLOOR) {
                 return `<li>Floor ${event.floor}</li>`;
             }
         }).join('') || '<li>Empty</li>'}

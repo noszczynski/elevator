@@ -47,7 +47,6 @@ export class ElevatorUI {
                         ${this.createFloorButtons()}
                     </div>
                     <div class="status">
-                        <div class="door-status">Doors: ${doorStatus}</div>
                         <div class="movement-status">Status: ${machineState}</div>
                     </div>
                 </div>
