@@ -1,6 +1,8 @@
 import { Elevator } from "./elevator";
+import { ElevatorUI } from "./elevator-ui";
 
 (async () => {
-    // Initialize the elevator system
-    new Elevator({ floors: 10});
+    const floors = 10;
+    const ui = new ElevatorUI({ floors });
+    new Elevator({ floors, ui });
 })();

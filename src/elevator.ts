@@ -2,6 +2,7 @@ import { ElevatorDoors } from './elevator-doors';
 import { ElevatorStatus } from './store/elevator/states';
 import StateMachine from './store/machine';
 import transitions from './store/elevator/transitions';
+import { ElevatorUI } from './elevator-ui';
 
 // Define action types
 const OPEN_DOOR = 'OPEN_DOOR';
@@ -58,31 +59,32 @@ export class Elevator {
     private doors: ElevatorDoors;
     private readonly totalFloors: number;
     private machine: StateMachine;
+    private ui: ElevatorUI;
     
-    constructor({ floors }: { floors: number }) {
-      this.totalFloors = floors;
-      this.doors = new ElevatorDoors();
-      
-      // Initialize state machine
-      this.machine = new StateMachine({
-        initial: ElevatorStatus.Idle,
-        states: ElevatorStatus,
-        transitions: transitions,
-      });
+    constructor({ floors, ui }: { floors: number; ui: ElevatorUI }) {
+        this.totalFloors = floors;
+        this.ui = ui;
+        this.doors = new ElevatorDoors();
+        
+        // Initialize state machine
+        this.machine = new StateMachine({
+            initial: ElevatorStatus.Idle,
+            states: ElevatorStatus,
+            transitions: transitions,
+        });
 
-      // Subscribe to state machine updates
-      this.machine.subscribe('update', (newState, data) => {
-        this.handleStateChange(newState, data);
-      });
-      
-      this.state = { 
-        currentFloor: 1, 
-        queue: [], 
-        machineState: ElevatorStatus.Idle,
-        queueProcessing: false
-      };
-      
-      this.initialize();
+        this.machine.subscribe('update', (newState, data) => {
+            this.handleStateChange(newState, data);
+        });
+        
+        this.state = { 
+            currentFloor: 1, 
+            queue: [], 
+            machineState: ElevatorStatus.Idle,
+            queueProcessing: false
+        };
+        
+        this.initialize();
     }
 
     private handleStateChange(newState: ElevatorStatus, data: any) {
@@ -95,96 +97,29 @@ export class Elevator {
     }
   
     private initialize(): void {
-      const appElement = document.getElementById('app');
-      if (!appElement) throw new Error('App element not found');
-  
-      appElement.innerHTML = `
-        <div class="elevator-system">
-          <!-- Column 1: Elevator -->
-          <div class="elevator-column">
-            <h2>Elevator</h2>
-            <div class="elevator-shaft">
-              <div class="elevator-car" data-floor="${this.state.currentFloor}">
-                <div class="floor-display">${this.state.currentFloor}</div>
-                <img 
-                  class="elevator-image" 
-                  src="/elevator/elevator-${this.doors.getStatus()}.svg" 
-                  alt="Elevator ${this.doors.getStatus()}"
-                />
-              </div>
-            </div>
-            <div class="elevator-controls">
-              <button class="door-control" data-action="open">Open Door</button>
-              <button class="door-control" data-action="close">Close Door</button>
-            </div>
-          </div>
-
-          <!-- Column 2: Controls -->
-          <div class="controls-column">
-            <h2>Controls</h2>
-            <div class="floor-buttons">
-              ${this.createFloorButtons()}
-            </div>
-            <div class="status">
-              <div class="door-status">Doors: ${this.doors.getStatus()}</div>
-              <div class="movement-status">Status: ${this.state.machineState}</div>
-            </div>
-          </div>
-
-          <!-- Column 3: Queue -->
-          <div class="state-column">
-            <h2>Event Queue</h2>
-            <div class="queue-panel">
-              <div class="queue-status">${this.formatQueueStatus()}</div>
-            </div>
-            <button class="debug-button">Log State</button>
-          </div>
-        </div>
-      `;
-  
-      this.attachEventListeners();
+        this.ui.initialize(
+            this.state.currentFloor,
+            this.doors.getStatus(),
+            this.state.machineState,
+            (floor) => this.requestFloor(floor),
+            (action) => {
+                if (action === 'open' && this.state.machineState !== ElevatorStatus.DoorOpen) {
+                    this.state.queue.push(openDoor('button'));
+                    this.updateUI();
+                    this.processQueue();
+                }
+                if (action === 'close') {
+                    this.state.queue.push(closeDoor('button'));
+                    this.updateUI();
+                    this.processQueue();
+                }
+            },
+            () => this.log()
+        );
     }
   
-    private createFloorButtons(): string {
-      return Array.from({ length: this.totalFloors }, (_, i) => i + 1)
-        .map(floor => `
-          <button class="floor-button" data-floor="${floor}">
-            Floor ${floor}
-          </button>
-        `).join('');
-    }
-  
-    private attachEventListeners(): void {
-      document.querySelectorAll('.floor-button').forEach(button => {
-        button.addEventListener('click', (e) => {
-          const floor = Number((e.target as HTMLElement).dataset.floor);
-          this.requestFloor(floor);
-        });
-      });
-  
-      document.querySelectorAll('.door-control').forEach(button => {
-        button.addEventListener('click', (e) => {
-          const action = (e.target as HTMLElement).dataset.action as 'open' | 'close';
-          if (action === 'open' && this.state.machineState !== ElevatorStatus.DoorOpen) {
-            this.state.queue.push(openDoor('button'));
-            this.updateUI();
-            this.processQueue();
-          }
-          if (action === 'close') {
-            this.state.queue.push(closeDoor('button'));
-            this.updateUI();
-            this.processQueue();
-          }
-        });
-      });
-
-      // Add debug button listener
-      const debugButton = document.querySelector('.debug-button');
-      if (debugButton) {
-        debugButton.addEventListener('click', () => {
-          this.log();
-        });
-      }
+    private async optimizeQueue(): Promise<void> {
+      // TODO: Implement queue optimization
     }
   
     private async requestFloor(floor: number): Promise<void> {
@@ -199,6 +134,7 @@ export class Elevator {
       );
 
       this.state.queue.push(...newEvents);
+      this.optimizeQueue();
       this.updateUI();
 
       // If the queue length is the same as the new events, process the queue
@@ -208,10 +144,15 @@ export class Elevator {
     }
   
     private async processQueue(): Promise<void> {
-      if (this.state.queue.length === 0 || this.state.queueProcessing) return;
+      if (this.state.queue.length === 0) {
+        this.state.queueProcessing = false;
+        return;
+      }
       
       this.state.queueProcessing = true;
-      const event = this.state.queue[0];
+      const [event] = this.state.queue;
+
+      console.log("[EVENT] Processing: ", event.type);
 
       try {
           switch (event.type) {
@@ -219,7 +160,6 @@ export class Elevator {
                   if (this.state.machineState === ElevatorStatus.Idle) {
                       await this.moveToFloor(event.floor);
                       this.state.queue.shift();
-                      this.state.queueProcessing = false;
                       await this.processQueue();
                   }
                   break;
@@ -236,7 +176,6 @@ export class Elevator {
                       await this.updateUI();
 
                       this.state.queue.shift();
-                      this.state.queueProcessing = false;
                       await this.processQueue();
                   }
                   break;
@@ -252,13 +191,13 @@ export class Elevator {
                       await this.updateUI();
 
                       this.state.queue.shift();
-                      this.state.queueProcessing = false;
                       await this.processQueue();
                   }
                   break;
           }
       } catch (error) {
           console.error('Error processing queue:', error);
+          this.state.queue = [];
           this.state.queueProcessing = false;
       }
 
@@ -266,93 +205,64 @@ export class Elevator {
     }
   
     private async moveToFloor(targetFloor: number): Promise<void> {
-      await this.machine.performTransition('moveToFloor');
-      
-      const floorDifference = Math.abs(targetFloor - this.state.currentFloor);
-      const baseTime = 1000;
-      const timePerFloor = 300;
-      const totalMoveTime = Math.min(
-        baseTime + (floorDifference - 1) * timePerFloor,
-        3000
-      );
-      
-      const startFloor = this.state.currentFloor;
-      const startTime = Date.now();
-      
-      const animate = () => {
-          const elapsedTime = Date.now() - startTime;
-          const progress = Math.min(elapsedTime / totalMoveTime, 1);
-          
-          const easeProgress = easeInOutCubic(progress);
-          
-          if (progress < 1) {
-              const elevatorCar = document.querySelector('.elevator-car') as HTMLElement;
-              if (elevatorCar) {
-                  const currentPosition = startFloor + (targetFloor - startFloor) * easeProgress;
-                  const bottomPosition = ((currentPosition - 1) / (this.totalFloors - 1)) * 100;
-                  elevatorCar.style.bottom = `${bottomPosition}%`;
-              }
-              requestAnimationFrame(animate);
-          } else {
-              this.state.currentFloor = targetFloor;
-              this.updateUI();
-          }
-      };
-      
-      const easeInOutCubic = (x: number): number => {
-          return x < 0.5
-              ? 4 * x * x * x
-              : 1 - Math.pow(-2 * x + 2, 3) / 2;
-      };
-      
-      requestAnimationFrame(animate);
-      
-      await new Promise(resolve => setTimeout(resolve, totalMoveTime));
-
-      await this.machine.performTransition('arrive');
+        await this.machine.performTransition('moveToFloor');
+        
+        const floorDifference = Math.abs(targetFloor - this.state.currentFloor);
+        const baseTime = 1000;
+        const timePerFloor = 300;
+        const totalMoveTime = Math.min(
+            baseTime + (floorDifference - 1) * timePerFloor,
+            3000
+        );
+        
+        const startFloor = this.state.currentFloor;
+        const startTime = Date.now();
+        
+        const animate = () => {
+            const elapsedTime = Date.now() - startTime;
+            const progress = Math.min(elapsedTime / totalMoveTime, 1);
+            
+            const easeProgress = easeInOutCubic(progress);
+            
+            if (progress < 1) {
+                this.ui.animateElevatorMovement(
+                    startFloor,
+                    targetFloor,
+                    easeProgress,
+                    this.totalFloors
+                );
+                requestAnimationFrame(animate);
+            } else {
+                this.state.currentFloor = targetFloor;
+                this.updateUI();
+            }
+        };
+        
+        const easeInOutCubic = (x: number): number => {
+            return x < 0.5
+                ? 4 * x * x * x
+                : 1 - Math.pow(-2 * x + 2, 3) / 2;
+        };
+        
+        requestAnimationFrame(animate);
+        
+        await new Promise(resolve => setTimeout(resolve, totalMoveTime));
+        await this.machine.performTransition('arrive');
     }
   
     private updateUI(): void {
-      const floorDisplay = document.querySelector('.floor-display');
-      if (floorDisplay) floorDisplay.textContent = String(this.state.currentFloor);
-  
-      const elevatorCar = document.querySelector('.elevator-car') as HTMLElement;
-      if (elevatorCar) {
-          elevatorCar.setAttribute('data-floor', String(this.state.currentFloor));
-          elevatorCar.classList.toggle('moving', this.state.machineState === ElevatorStatus.Moving);
-          
-          if (this.state.machineState !== ElevatorStatus.Moving) {
-              const bottomPosition = ((this.state.currentFloor - 1) / (this.totalFloors - 1)) * 100;
-              elevatorCar.style.bottom = `${bottomPosition}%`;
-          }
-      }
-  
-      const door = document.querySelector('.door');
-      if (door) door.className = `door ${this.doors.getStatus()}`;
-  
-      const doorStatus = document.querySelector('.door-status');
-      if (doorStatus) doorStatus.textContent = `Doors: ${this.doors.getStatus()}`;
-  
-      const movementStatus = document.querySelector('.movement-status');
-      if (movementStatus) {
-          movementStatus.textContent = `Status: ${this.state.machineState}`;
-      }
-  
-      const queueStatus = document.querySelector('.queue-status');
-      if (queueStatus) {
-        queueStatus.innerHTML = this.formatQueueStatus();
-      }
-  
-      const elevatorImage = document.querySelector('.elevator-image') as HTMLImageElement;
-      if (elevatorImage) {
-        elevatorImage.src = `/elevator/elevator-${this.doors.getStatus()}.svg`;
-        elevatorImage.alt = `Elevator ${this.doors.getStatus()}`;
-      }
+        this.ui.updateElevatorPosition(
+            this.state.currentFloor,
+            this.totalFloors,
+            this.state.machineState === ElevatorStatus.Moving
+        );
 
-      const machineStateDisplay = document.querySelector('.movement-status');
-      if (machineStateDisplay) {
-          machineStateDisplay.textContent = `State: ${this.state.machineState}`;
-      }
+        this.ui.updateDisplay(
+            this.state.currentFloor,
+            this.doors.getStatus(),
+            this.state.machineState,
+            this.formatQueueStatus()
+        );
     }
   
     private formatQueueStatus(): string {
